@@ -1,0 +1,28 @@
+/* ── Ryview injected styles ── */
+
+/* Popup container */
+#ryview-popup {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Word highlights inside popup panel */
+.rv-word-high-decep {
+  background: rgba(220, 80, 120, 0.32);
+  border-radius: 3px;
+  padding: 1px 2px;
+}
+.rv-word-med-decep {
+  background: rgba(220, 80, 120, 0.16);
+  border-radius: 3px;
+  padding: 1px 2px;
+}
+.rv-word-high-genuine {
+  background: rgba(100, 200, 160, 0.30);
+  border-radius: 3px;
+  padding: 1px 2px;
+}
+.rv-word-med-genuine {
+  background: rgba(100, 200, 160, 0.15);
+  border-radius: 3px;
+  padding: 1px 2px;
+}

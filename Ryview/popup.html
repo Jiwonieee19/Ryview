@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>RyView</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #110D1A;
+      --s1:      #1C1628;
+      --s2:      #241E33;
+      --border:  rgba(255,255,255,0.08);
+      --text:    #EAE6F0;
+      --muted:   #7A7290;
+      --accent:  #9B6DFF;
+      --decep:   #F0527A;
+      --genuine: #52C9A0;
+    }
+
+    body {
+      width: 280px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
+
+    /* Top bar */
+    .topbar {
+      background: var(--s1);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+      display: flex; align-items: center;
+      justify-content: space-between;
+    }
+    .brand {
+      display: flex; align-items: center; gap: 9px;
+    }
+    .brand-icon {
+      width: 30px; height: 30px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), #7C3AED);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px; color: white; font-weight: 800;
+      font-family: 'Syne', sans-serif;
+    }
+    .brand-name {
+      font-family: 'Syne', sans-serif;
+      font-size: 16px; font-weight: 800;
+      letter-spacing: -.3px;
+    }
+    .api-status {
+      display: flex; align-items: center; gap: 5px;
+      font-size: 11px; color: var(--muted);
+    }
+    .dot {
+      width: 7px; height: 7px; border-radius: 50%;
+    }
+    .dot-on  { background: var(--genuine); box-shadow: 0 0 5px var(--genuine); animation: blink 2s infinite; }
+    .dot-off { background: #555; }
+    @keyframes blink {
+      0%,100% { opacity:1; } 50% { opacity:.3; }
+    }
+
+    /* Body */
+    .body { padding: 16px; }
+
+    /* How-to card */
+    .howto {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .howto-title {
+      font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .09em;
+      color: var(--muted); margin-bottom: 10px;
+    }
+    .step {
+      display: flex; align-items: flex-start;
+      gap: 10px; margin-bottom: 9px;
+    }
+    .step:last-child { margin-bottom: 0; }
+    .step-num {
+      width: 20px; height: 20px; border-radius: 6px;
+      background: linear-gradient(135deg, var(--accent), #7C3AED);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800;
+      color: white; flex-shrink: 0; margin-top: 1px;
+    }
+    .step-text {
+      font-size: 12.5px; color: var(--muted);
+      line-height: 1.5;
+    }
+    .step-text strong { color: var(--text); }
+
+    /* Divider */
+    .divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+    /* Tags */
+    .tag-label {
+      font-size: 10px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .09em;
+      color: var(--muted); margin-bottom: 7px;
+    }
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 14px; }
+    .tag {
+      font-size: 10px; font-weight: 600;
+      padding: 3px 9px; border-radius: 999px;
+      background: rgba(155,109,255,0.1);
+      color: var(--accent);
+      border: 1px solid rgba(155,109,255,0.2);
+    }
+
+    /* Metrics row */
+    .metrics {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 7px; margin-bottom: 14px;
+    }
+    .metric {
+      background: var(--s1);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .metric-val {
+      font-family: 'Syne', sans-serif;
+      font-size: 18px; font-weight: 800;
+      color: var(--accent); line-height: 1;
+    }
+    .metric-lbl {
+      font-size: 10px; color: var(--muted);
+      text-transform: uppercase; letter-spacing: .07em;
+      margin-top: 3px;
+    }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      font-size: 10px; color: #3A3550;
+      padding-bottom: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-icon">𝑅</div>
+      <div class="brand-name">RyView</div>
+    </div>
+    <div class="api-status">
+      <div class="dot" id="api-dot"></div>
+      <span id="api-txt">Checking…</span>
+    </div>
+  </div>
+
+  <div class="body">
+
+    <!-- How to use -->
+    <div class="howto">
+      <div class="howto-title">How to use</div>
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text"><strong>Select</strong> any hotel review text on the page</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">A <strong>popup appears</strong> with the verdict and confidence</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">See <strong>highlighted words</strong> that drove the decision</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-text">Click <strong>Full report</strong> for detailed word-level analysis</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Enhancements -->
+    <div class="tag-label">Model enhancements</div>
+    <div class="tags">
+      <span class="tag">Cosine LR</span>
+      <span class="tag">Weighted Loss</span>
+      <span class="tag">Dropout Tuning</span>
+      <span class="tag">Early Stopping</span>
+    </div>
+
+    <!-- Metrics -->
+    <div class="tag-label">Performance</div>
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-val">89.6%</div>
+        <div class="metric-lbl">Accuracy</div>
+      </div>
+      <div class="metric">
+        <div class="metric-val">97.5%</div>
+        <div class="metric-lbl">Recall</div>
+      </div>
+      <div class="metric">
+        <div class="metric-val">90.4%</div>
+        <div class="metric-lbl">F1-Score</div>
+      </div>
+      <div class="metric">
+        <div class="metric-val">3</div>
+        <div class="metric-lbl">False Neg.</div>
+      </div>
+    </div>
+
+    <div class="footer">RyView · Enhanced RoBERTa · Hotel Review Detection</div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

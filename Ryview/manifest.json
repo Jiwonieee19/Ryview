@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Ryview",
+  "version": "1.0.0",
+  "description": "Highlight any hotel review text to detect if it is genuine or deceptive using an enhanced RoBERTa model.",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "http://127.0.0.1:8001/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Ryview"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "styles.css"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "dashboard.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
