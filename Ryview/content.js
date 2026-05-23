@@ -177,59 +177,6 @@ function showError(rect) {
   positionPopup(box, rect);
 }
 
-// ── Word saliency highlight builder ──────────────────────────────────────────
-function buildHighlightedText(tokenScores, isDeceptive) {
-  if (!tokenScores || tokenScores.length === 0) return "";
-
-  return tokenScores.map(w => {
-    const word = w.word.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const score = w.score;
-    const abs = Math.abs(score);
-    if (abs < 0.15) return word + " ";
-
-    const positive = score > 0;
-    let cls = "";
-    if (positive) {
-      cls = abs > 0.5
-        ? (isDeceptive ? "rv-word-high-decep" : "rv-word-high-genuine")
-        : (isDeceptive ? "rv-word-med-decep" : "rv-word-med-genuine");
-    } else {
-      cls = abs > 0.5
-        ? (isDeceptive ? "rv-word-high-genuine" : "rv-word-high-decep")
-        : (isDeceptive ? "rv-word-med-genuine" : "rv-word-med-decep");
-    }
-    return `<span class="${cls}" title="${score.toFixed(3)}">${word}</span> `;
-  }).join("");
-}
-
-// ── Top influential words ──────────────────────────────────────────────────
-function buildTopWords(tokenScores, isDeceptive) {
-  if (!tokenScores || tokenScores.length === 0) return "";
-
-  const top = [...tokenScores]
-    .filter(w => w.word.trim())
-    .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
-    .slice(0, 6);
-
-  return top.map(w => {
-    const isPos = w.score > 0;
-    const color = isPos
-      ? (isDeceptive ? PALETTE.deceptive : PALETTE.genuine)
-      : (isDeceptive ? PALETTE.genuine : PALETTE.deceptive);
-    const arrow = isPos ? "↑" : "↓";
-    const direction = isPos ? "Toward" : "Against";
-    return `<span style="
-      display:inline-flex;align-items:center;gap:4px;
-      background:${PALETTE.surface2};
-      border:1px solid ${PALETTE.border};
-      border-radius:999px;
-      padding:3px 10px;
-      font-size:11px;color:${PALETTE.text};
-      margin:3px 3px 0 0;
-    ">${w.word}<span style="color:${color};font-weight:700;" title="${direction} ${isDeceptive ? 'Deceptive' : 'Genuine'}">${direction} · ${arrow}${Math.abs(w.score).toFixed(2)}</span></span>`;
-  }).join("");
-}
-
 // ── Full result popup ─────────────────────────────────────────────────────────
 function showResult(data, text, rect) {
   const { label, confidence, token_scores } = data;
@@ -239,9 +186,6 @@ function showResult(data, text, rect) {
   const verdictBg = isDeceptive ? PALETTE.deceptiveBg : PALETTE.genuineBg;
   const icon = isDeceptive ? "⚠" : "✓";
   const confOffset = 188.5 * (1 - confidence);
-
-  const highlightedHTML = buildHighlightedText(token_scores, isDeceptive);
-  const topWordsHTML = buildTopWords(token_scores, isDeceptive);
 
   const box = createShell();
   box.innerHTML = `
@@ -314,39 +258,6 @@ function showResult(data, text, rect) {
       </div>
     </div>
 
-    <!-- Highlighted text section -->
-    ${highlightedHTML ? `
-    <div style="padding:14px 18px;border-bottom:1px solid ${PALETTE.border};">
-      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:${PALETTE.muted};margin-bottom:8px;">
-        Word influence
-      </div>
-      <div style="font-size:11px;color:${PALETTE.muted};margin-bottom:8px;line-height:1.45;">
-        Green means the token helped this verdict. Red means it pushed against it.
-      </div>
-      <div style="font-size:12.5px;line-height:1.8;color:${PALETTE.text};max-height:90px;overflow-y:auto;">
-        ${highlightedHTML}
-      </div>
-      <div style="display:flex;gap:12px;margin-top:8px;font-size:10px;color:${PALETTE.muted};">
-        <span>
-          <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${verdictColor};opacity:.7;margin-right:4px;"></span>
-          Toward ${label}
-        </span>
-        <span>
-          <span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${isDeceptive ? PALETTE.genuine : PALETTE.deceptive};opacity:.6;margin-right:4px;"></span>
-          Against ${label}
-        </span>
-      </div>
-    </div>` : ""}
-
-    <!-- Top words -->
-    ${topWordsHTML ? `
-    <div style="padding:12px 18px;border-bottom:1px solid ${PALETTE.border};">
-      <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:${PALETTE.muted};margin-bottom:7px;">
-        Key words
-      </div>
-      <div>${topWordsHTML}</div>
-    </div>` : ""}
-
     <!-- Footer -->
     <div style="padding:12px 18px;display:flex;align-items:center;justify-content:space-between;">
       <span style="font-size:11px;color:${PALETTE.muted};">Enhanced RoBERTa · 89.58% accuracy</span>
@@ -364,10 +275,12 @@ function showResult(data, text, rect) {
   positionPopup(box, rect);
 
   // Full dashboard — passes confidence as a plain percentage number
+  // Sentence scores are recomputed server-side in the dashboard from text,
+  // so only token_scores needs to be passed here.
   box.querySelector("#rv-details-btn").addEventListener("click", () => {
     const params = new URLSearchParams({
       label,
-      confidence: confPct,          // e.g. "87.4"  (no % sign, already ×100)
+      confidence: confPct,
       text,
       token_scores: JSON.stringify(token_scores || [])
     });

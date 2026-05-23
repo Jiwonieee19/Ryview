@@ -137,6 +137,53 @@ def get_token_attributions(text: str, pred_class: int):
     return words
 
 
+
+# =========================================================
+# SENTENCE-LEVEL SCORING
+# =========================================================
+
+def get_sentence_scores(text: str, pred_class: int, base_conf: float):
+    """
+    Scores each sentence by running the model with that sentence masked out.
+    score = base_conf - conf_without_sentence
+    Positive  -> sentence supports the verdict (removing it hurts confidence).
+    Negative  -> sentence works against the verdict (removing it helps).
+    Normalized to [-1, 1].
+    """
+    import re as _re
+
+    raw_sentences = _re.split(r'(?<=[.!?])\s+', text.strip())
+    sentences = [s.strip() for s in raw_sentences if s.strip()]
+
+    if len(sentences) <= 1:
+        return [{"sentence": text.strip(), "score": 1.0}]
+
+    raw_scores = []
+    for i, sent in enumerate(sentences):
+        remaining = " ".join(s for j, s in enumerate(sentences) if j != i)
+        if not remaining.strip():
+            raw_scores.append(0.0)
+            continue
+        inputs = tokenizer(
+            remaining,
+            return_tensors="pt",
+            truncation=True,
+            padding=True,
+            max_length=512
+        )
+        inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+        with torch.no_grad():
+            outputs = model(**inputs)
+        probs    = F.softmax(outputs.logits, dim=1)
+        new_conf = float(probs[0, pred_class].item())
+        raw_scores.append(base_conf - new_conf)
+
+    max_abs = max(abs(s) for s in raw_scores) if raw_scores else 1.0
+    if max_abs > 0:
+        raw_scores = [round(s / max_abs, 4) for s in raw_scores]
+
+    return [{"sentence": sent, "score": sc} for sent, sc in zip(sentences, raw_scores)]
+
 # =========================================================
 # PREDICT ROUTE
 # =========================================================
@@ -162,12 +209,15 @@ def predict(review: Review):
     label_map = {0: "Genuine", 1: "Deceptive"}
     label     = label_map[pred_class]
 
-    token_scores = get_token_attributions(review.text, pred_class)
+    token_scores    = get_token_attributions(review.text, pred_class)
+    base_conf       = float(confidence.item())
+    sentence_scores = get_sentence_scores(review.text, pred_class, base_conf)
 
     return {
-        "label":        label,
-        "confidence":   float(confidence.item()),
-        "token_scores": token_scores
+        "label":           label,
+        "confidence":      base_conf,
+        "token_scores":    token_scores,
+        "sentence_scores": sentence_scores
     }
 
 
@@ -198,6 +248,17 @@ async def dashboard(
         except Exception:
             tokens_data = []
 
+    # Compute sentence scores server-side from text + parsed confidence
+    sentences_data = []
+    if text:
+        try:
+            pred_class_dash = 0 if label == "Genuine" else 1
+            base_conf_dash  = float(str(confidence).strip().rstrip("%"))
+            base_conf_dash  = base_conf_dash / 100.0 if base_conf_dash > 1.0 else base_conf_dash
+            sentences_data  = get_sentence_scores(text, pred_class_dash, base_conf_dash)
+        except Exception:
+            sentences_data = []
+
     # ── Confidence ring offset ────────────────────────────────────────────────
     try:
         conf_val    = float(confidence) if confidence else 0.0
@@ -205,53 +266,12 @@ async def dashboard(
     except Exception:
         conf_offset = 251.2
 
-    # ── Highlighted review text ───────────────────────────────────────────────
-    def score_to_style(score):
-        intensity = min(abs(score), 1.0)
-        alpha     = 0.15 + intensity * 0.55
-        if score > 0.1:
-            color = "240,82,122" if is_deceptive else "82,201,160"
-        elif score < -0.1:
-            color = "82,201,160" if is_deceptive else "240,82,122"
-        else:
-            return ""
-        return f"background:rgba({color},{alpha:.2f});border-radius:3px;padding:1px 3px;"
-
+    # Review text in the first card is now plain text only.
     highlighted_html = ""
-    if tokens_data:
-        for w in tokens_data:
-            style = score_to_style(w["score"])
-            word  = w["word"].replace("<", "&lt;").replace(">", "&gt;")
-            if style:
-                highlighted_html += f'<span style="{style}" title="Score: {w["score"]:.3f}">{word}</span> '
-            else:
-                highlighted_html += f'{word} '
-    elif text:
-        highlighted_html = text
+    if text:
+      highlighted_html = text.replace("<", "&lt;").replace(">", "&gt;")
 
-    # ── Top influential words pills ───────────────────────────────────────────
-    top_words = sorted(tokens_data, key=lambda x: abs(x["score"]), reverse=True)
-    top_words = [w for w in top_words if w.get("display_word", w["word"]).strip()][:8]
-
-    top_words_html = ""
-    for w in top_words:
-        is_pos   = w["score"] > 0
-        disp     = w.get("display_word", w["word"])
-        color    = verdict_color if is_pos else against_color
-        bg       = (
-            "rgba(240,82,122,0.10)" if (is_pos and is_deceptive) else
-            "rgba(82,201,160,0.10)" if (is_pos and not is_deceptive) else
-            "rgba(82,201,160,0.10)" if is_deceptive else
-            "rgba(240,82,122,0.10)"
-        )
-        arrow = "&#8593;" if is_pos else "&#8595;"
-        top_words_html += f"""
-        <div class="word-pill">
-          <span class="word-text">{disp}</span>
-          <span class="word-score" style="color:{color};background:{bg}">
-            {arrow} {abs(w["score"]):.2f}
-          </span>
-        </div>"""
+    # Token sensitivity map removed — sentence-level scoring is the primary explanation
 
     # ── Visual explain panel ──────────────────────────────────────────────────
 
@@ -299,72 +319,118 @@ async def dashboard(
     except Exception:
         tilt_html = ""
 
-    # 2. Token bar chart
+    # 2. Sentence bar chart
     bar_html = ""
+    strongest_sentence = None
     try:
-        sorted_tokens = sorted(tokens_data, key=lambda x: abs(x["score"]), reverse=True)
-        sorted_tokens = [w for w in sorted_tokens if w.get("display_word", w["word"]).strip()][:8]
+        sorted_sents = sorted(sentences_data, key=lambda x: abs(x["score"]), reverse=True)
 
         rows = ""
-        for w in sorted_tokens:
-            score     = w["score"]
-            disp      = w.get("display_word", w["word"]).replace("<", "&lt;").replace(">", "&gt;")
+        for item in sorted_sents:
+            score     = item["score"]
+            sent      = item["sentence"].replace("<", "&lt;").replace(">", "&gt;")
+            # Truncate long sentences for the label
+            label_txt = sent if len(sent) <= 72 else sent[:69] + "…"
             width_pct = min(abs(score) * 100, 100)
             bar_color = verdict_color if score > 0 else against_color
             dir_color = bar_color
-            direction = "&#8593; toward" if score > 0 else "&#8595; against"
+            direction = "&#8593; supports verdict" if score > 0 else "&#8595; weakens verdict"
             sign      = "+" if score > 0 else "&#8722;"
             rows += f"""
-            <div class="bar-row">
-              <span class="bar-label" title="{disp}">{disp}</span>
-              <div class="bar-track">
-                <div class="bar-fill" style="width:{width_pct:.1f}%;background:{bar_color};">
-                  <span class="bar-val">{sign}{abs(score):.2f}</span>
+            <div class="sent-row">
+              <div class="sent-label" title="{sent}">{label_txt}</div>
+              <div class="sent-bar-wrap">
+                <div class="bar-track">
+                  <div class="bar-fill" style="width:{width_pct:.1f}%;background:{bar_color};">
+                    <span class="bar-val">{sign}{abs(score):.2f}</span>
+                  </div>
                 </div>
+                <span class="bar-dir" style="color:{dir_color};">{direction}</span>
               </div>
-              <span class="bar-dir" style="color:{dir_color};">{direction}</span>
             </div>"""
 
         bar_html = f"""
-        <div class="viz-section">
-          <div class="viz-label">Top influential tokens</div>
-          <div class="viz-sublabel">
-            Bar length = influence strength &nbsp;&#183;&nbsp;
-            <span style="color:{verdict_color};">&#9632;</span> toward {label} &nbsp;
-            <span style="color:{against_color};">&#9632;</span> against {label}
-          </div>
-          <div class="bar-chart">{rows}</div>
-        </div>"""
+        <div class="sent-chart">{rows}</div>"""
+        strongest_sentence = sorted_sents[0] if sorted_sents else None
     except Exception:
         bar_html = ""
+        strongest_sentence = None
 
     cf_html = ""
+
+    # Sentence card — standalone card separate from explain card
+    if bar_html:
+        sent_card = (
+            '<div class="sent-card">'
+            '<p class="sec-title">Sentence-level influence</p>'
+            '<p class="sent-sublabel">'
+            'Each sentence scored by how much removing it shifts model confidence. '
+            '<span style="color:' + verdict_color + ';">&#9632; supports ' + label + '</span> &nbsp; '
+            '<span style="color:' + against_color + ';">&#9632; weakens ' + label + '</span>'
+            '</p>'
+            + bar_html +
+            '</div>'
+        )
+    else:
+        sent_card = ""
+
+    # Same-card explanation for why the model leaned genuine or deceptive.
+    why_card = ""
+    if label:
+      if strongest_sentence:
+        strongest_text = strongest_sentence["sentence"].replace("<", "&lt;").replace(">", "&gt;")
+        strongest_score = strongest_sentence["score"]
+        strongest_dir = "toward" if strongest_score > 0 else "against"
+        strongest_label = "supports" if strongest_score > 0 else "pushes against"
+        strongest_excerpt = strongest_text if len(strongest_text) <= 96 else strongest_text[:93] + "…"
+
+        why_title = "Why the model labeled it this way"
+        why_intro = (
+            f"Sentence-level influence: <strong>{strongest_excerpt}</strong> is the strongest shift the model found, scoring {strongest_score:+.2f} and {strongest_dir} the {label.lower()} verdict."
+        )
+        why_detail = (
+            f"Model confidence breakdown: the final confidence is {conf_display}, so the label is not coming from one sentence alone. "
+            f"The sentence bars and confidence ring together show how the model combines the strongest evidence before choosing {label.lower()}."
+        )
+        why_tail = (
+            f"Why this label: the model is treating the review as {label.lower()} because its strongest sentence-level signal {strongest_label} that verdict more than the opposite one."
+        )
+      else:
+        why_title = "Why the model labeled it this way"
+        why_intro = "Sentence-level influence: the model produced a label, but no sentence breakdown was available to display here."
+        why_detail = f"Model confidence breakdown: the final confidence is {conf_display}, and the label still comes from the model’s internal sentence scoring."
+        why_tail = f"Why this label: the prediction reflects the model output for {label.lower()}, even when the sentence cards could not be rendered."
+
+      why_card = (
+        '<div class="sent-card">'
+        f'<p class="sec-title">{why_title}</p>'
+        '<p class="sent-sublabel" style="margin-bottom:10px;">'
+        + why_intro +
+        '</p>'
+        '<p class="sent-sublabel" style="margin-bottom:10px;">'
+        + why_detail +
+        '</p>'
+        '<p class="sent-sublabel" style="margin-bottom:0;">'
+        + why_tail +
+        '</p>'
+        '</div>'
+      )
 
     # ── Pre-build conditional blocks ──────────────────────────────────────────
     if highlighted_html:
         rc = (
             '<div class="review-card">'
-            '<p class="sec-title">Review Text &#8212; Word Influence Highlight</p>'
-            '<div class="review-text">' + highlighted_html + '</div>'
-            '<div class="legend-row">'
-            '<span><span class="legend-dot" style="background:' + verdict_color + ';opacity:.7"></span>Toward ' + label + '</span>'
-            '<span><span class="legend-dot" style="background:' + against_color + ';opacity:.6"></span>Against ' + label + '</span>'
-            '<span style="margin-left:auto;font-size:11px">Intensity = strength of influence</span>'
-            '</div></div>'
+        '<p class="sec-title">Review Text</p>'
+            '<p style="margin-top:-4px;margin-bottom:12px;color:#7A7290;font-size:12px;line-height:1.5;">'
+        'Plain review text shown without highlight colours.'
+            '</p>'
+        '<div class="review-text">' + highlighted_html + '</div>'
+        '</div>'
         )
     else:
         rc = ""
 
-    if top_words_html:
-        wc = (
-            '<div class="words-card">'
-            '<p class="sec-title">Top Influential Words</p>'
-            '<p style="margin-top:-2px;margin-bottom:10px;color:#7A7290;font-size:11px">Bigger absolute values mean stronger influence.</p>'
-            '<div class="words-grid">' + top_words_html + '</div>'
-            '</div>'
-        )
-    else:
-        wc = ""
+    wc = ""  # Token sensitivity map removed
 
     # ── Full HTML ─────────────────────────────────────────────────────────────
     return f"""<!DOCTYPE html>
@@ -513,7 +579,7 @@ async def dashboard(
       display:flex;flex-direction:column;
       align-items:center;justify-content:center;
     }}
-    .conf-val{{font-family:var(--font-h);font-size:19px;font-weight:800;line-height:1;}}
+    .conf-val{{font-family:var(--font-h);font-size:12px;font-weight:800;line-height:1;}}
     .conf-lbl{{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-top:2px;}}
 
     /* ── Review card ── */
@@ -543,21 +609,18 @@ async def dashboard(
       display:inline-block;margin-right:5px;
     }}
 
-    /* ── Words card ── */
-    .words-card{{
+    /* ── Sentence card ── */
+    .sent-card{{
       background:var(--s1);border:1px solid var(--border);
-      border-radius:20px;padding:22px 28px;
+      border-radius:20px;padding:24px 28px;
       margin-bottom:16px;
-      animation:fadeUp .4s .22s ease both;
+      animation:fadeUp .4s .25s ease both;
     }}
-    .words-grid{{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}}
-    .word-pill{{
-      display:flex;align-items:center;gap:7px;
-      background:var(--s2);border:1px solid var(--border);
-      border-radius:999px;padding:5px 13px;
+    .sent-sublabel{{
+      font-size:12px;color:var(--muted);
+      margin-bottom:16px;line-height:1.5;
     }}
-    .word-text{{font-size:13px;font-weight:500;color:var(--text);}}
-    .word-score{{font-size:11px;font-weight:700;padding:2px 7px;border-radius:999px;}}
+
 
     /* ── Visual explain card ── */
     .explain-card{{
@@ -618,16 +681,14 @@ async def dashboard(
       margin-top:8px;line-height:1.5;
     }}
 
-    /* Bar chart */
-    .bar-chart{{display:flex;flex-direction:column;gap:8px;}}
-    .bar-row{{display:flex;align-items:center;gap:10px;}}
-    .bar-label{{
-      font-size:12px;color:var(--text);
-      min-width:90px;max-width:90px;
-      text-align:right;
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-      flex-shrink:0;
+    /* Sentence bar chart */
+    .sent-chart{{display:flex;flex-direction:column;gap:12px;}}
+    .sent-row{{display:flex;flex-direction:column;gap:5px;}}
+    .sent-label{{
+      font-size:12.5px;color:var(--text);line-height:1.4;
+      word-break:break-word;
     }}
+    .sent-bar-wrap{{display:flex;align-items:center;gap:10px;}}
     .bar-track{{
       flex:1;height:22px;
       background:var(--s2);border-radius:5px;
@@ -639,7 +700,7 @@ async def dashboard(
       min-width:32px;
     }}
     .bar-val{{font-size:10px;font-weight:700;color:rgba(255,255,255,0.9);white-space:nowrap;}}
-    .bar-dir{{font-size:11px;min-width:68px;white-space:nowrap;}}
+    .bar-dir{{font-size:11px;min-width:110px;white-space:nowrap;}}
 
     .disclaimer{{
       margin-top:16px;font-size:11px;
@@ -706,29 +767,28 @@ async def dashboard(
       </div>
     </div>
 
-    <!-- Highlighted review -->
+    <!-- Sentence-highlighted review text -->
     {rc}
 
-    <!-- Top word pills -->
-    {wc}
+    <!-- Sentence influence card (primary explanation) -->
+    {sent_card}
 
-    <!-- Visual explain panel -->
+    <!-- Why this verdict card -->
+    {why_card}
+
+    <!-- Tilt meter + methodology note -->
     <div class="explain-card">
-      <div class="explain-title">How this verdict was reached</div>
+      <div class="explain-title">Model confidence breakdown</div>
 
       {tilt_html}
 
-      {"<hr class='section-divider'/>" if tilt_html and bar_html else ""}
-
-      {bar_html}
-
-      {"<hr class='section-divider'/>" if bar_html and cf_html else ""}
-
-      {cf_html}
-
       <p class="disclaimer">
-        <em>Legend:</em> Highlight color shows direction (toward / against the verdict); bar length and intensity show influence strength.
-        Scores are approximate &#8212; interpret alongside human judgement. Model: RoBERTa fine-tuned on deceptive hotel reviews.
+        <em>How to read this:</em> The sentence highlight and sentence-level influence bars are the primary explanation &#8212;
+        they show which parts of the review actually shifted the model&#8217;s confidence.
+        The token sensitivity map is a secondary signal showing which individual words the model is most sensitive to,
+        not necessarily what drove the final verdict.
+        All scores are approximate &#8212; interpret alongside human judgement.
+        Model: RoBERTa fine-tuned on deceptive hotel reviews.
       </p>
     </div>
 

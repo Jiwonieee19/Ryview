@@ -72,29 +72,6 @@ function showPopup(label, confidence, text, tokenScores) {
     const icon = isDecep ? "⚠" : "✓";
     const confPct = (confidence * 100).toFixed(1);
 
-    // Build mini highlights for popup (top 5 words only)
-    const topWords = [...tokenScores]
-        .sort((a, b) => Math.abs(b.score) - Math.abs(a.score))
-        .slice(0, 5)
-        .filter(w => w.word.trim());
-
-    const topWordsHTML = topWords.map(w => {
-        const wColor = w.score > 0
-            ? (isDecep ? "#FF4D4D" : "#00C48C")
-            : (isDecep ? "#00C48C" : "#FF4D4D");
-        const arrow = w.score > 0 ? "↑" : "↓";
-        return `<span style="
-            display:inline-flex; align-items:center; gap:4px;
-            background:rgba(255,255,255,0.06);
-            border-radius:999px; padding:3px 10px;
-            font-size:11px; color:#E8EAF0;
-            margin:3px 3px 0 0;
-        ">
-            ${w.word}
-            <span style="color:${wColor};font-weight:700;">${arrow}${Math.abs(w.score).toFixed(2)}</span>
-        </span>`;
-    }).join("");
-
     const box = document.createElement("div");
     box.id = "rg-popup";
 
@@ -123,7 +100,7 @@ function showPopup(label, confidence, text, tokenScores) {
             <!-- Brand row -->
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
                 <span style="font-size:12px;font-weight:700;color:#E8EAF0;letter-spacing:-.2px;">
-                    🛡 ReviewGuard
+                    🛡 RyView
                 </span>
                 <span style="
                     font-size:11px;font-weight:700;
@@ -151,15 +128,6 @@ function showPopup(label, confidence, text, tokenScores) {
                     "></div>
                 </div>
             </div>
-
-            <!-- Top words -->
-            ${topWordsHTML ? `
-            <div style="margin-bottom:14px;">
-                <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#6B7080;margin-bottom:6px;">
-                    Key influencing words
-                </div>
-                <div>${topWordsHTML}</div>
-            </div>` : ''}
 
             <!-- View Details button -->
             <button id="rg-details-btn" style="
