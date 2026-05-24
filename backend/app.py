@@ -139,7 +139,7 @@ def get_token_attributions(text: str, pred_class: int):
 
 
 # =========================================================
-# SENTENCE-LEVEL SCORING
+# SENTENCE-LEVEL SCORING OF MODEL
 # =========================================================
 
 def get_sentence_scores(text: str, pred_class: int, base_conf: float):
