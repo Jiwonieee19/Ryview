@@ -5,6 +5,7 @@
   "description": "Highlight any hotel review text to detect if it is genuine or deceptive using an enhanced RoBERTa model.",
   "permissions": [
     "activeTab",
+    "scripting",
     "storage"
   ],
   "background": {

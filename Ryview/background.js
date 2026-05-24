@@ -1,43 +1,29 @@
-const API_BASE = "http://127.0.0.1:8001";
-
-async function proxyPredict(text) {
-    const res = await fetch(`${API_BASE}/predict`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+async function predictReview(text) {
+    const res = await fetch("http://127.0.0.1:8001/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text })
     });
+
     if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`API ${res.status}: ${body}`);
+        const body = await res.text().catch(() => "");
+        throw new Error(`API request failed (${res.status}): ${body || res.statusText}`);
     }
+
     return res.json();
 }
 
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    // Support both our earlier `{ type: 'predict', payload: { text } }` shape
-    // and the current content script `{ action: 'PREDICT_REVIEW', text }
-    try {
-        if (!msg) {
-            sendResponse({ ok: false, error: 'Empty message' });
-            return;
-        }
-
-        if (msg.type === 'predict' && msg.payload && msg.payload.text) {
-            proxyPredict(msg.payload.text)
-                .then(data => sendResponse({ ok: true, data }))
-                .catch(err => sendResponse({ ok: false, error: String(err) }));
-            return true;
-        }
-
-        if (msg.action === 'PREDICT_REVIEW' && msg.text) {
-            proxyPredict(msg.text)
-                .then(data => sendResponse({ ok: true, data }))
-                .catch(err => sendResponse({ ok: false, error: String(err) }));
-            return true;
-        }
-
-        sendResponse({ ok: false, error: 'Unknown message format' });
-    } catch (e) {
-        sendResponse({ ok: false, error: String(e) });
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.action !== "PREDICT_REVIEW") {
+        return;
     }
+
+    predictReview(message.text)
+        .then((data) => sendResponse({ ok: true, data }))
+        .catch((error) => {
+            console.error("ReviewGuard API error:", error);
+            sendResponse({ ok: false, error: error.message || String(error) });
+        });
+
+    return true;
 });

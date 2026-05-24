@@ -794,7 +794,7 @@ async def dashboard(
 
     <div class="footer">
       Powered by <strong>RyView</strong> &nbsp;&middot;&nbsp;
-      Enhanced RoBERTa for Deceptive Hotel Review Detection
+      ReImagined RoBERTa for Deceptive Hotel Review Detection
     </div>
 
   </div>
