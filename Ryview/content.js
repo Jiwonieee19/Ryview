@@ -2,6 +2,7 @@ console.log("RyView content script loaded.");
 
 let lastCall = 0;
 let activePopup = null;
+let lastSelectedText = "";
 
 function predictReview(text) {
   return new Promise((resolve, reject) => {
@@ -33,30 +34,63 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   sendResponse({ text: window.getSelection().toString().trim() });
 });
 
+function getSelectedText() {
+  return window.getSelection().toString().trim();
+}
+
+function getSelectionRect() {
+  const selection = window.getSelection();
+
+  if (!selection.rangeCount) {
+    return null;
+  }
+
+  return selection.getRangeAt(0).getBoundingClientRect();
+}
+
+async function processSelection() {
+  const now = Date.now();
+  if (now - lastCall < 2000) return;
+
+  const text = getSelectedText();
+  if (!text) {
+    lastSelectedText = "";
+    return;
+  }
+
+  if (text === lastSelectedText) return;
+  lastSelectedText = text;
+
+  if (text.length < 3) {
+    console.debug("RyView ignored a very short selection:", text);
+    return;
+  }
+
+  const rect = getSelectionRect();
+  if (!rect) return;
+
+  lastCall = now;
+  showLoading(rect);
+
+  try {
+    const data = await predictReview(text);
+    showPopup(data.label, data.confidence, text, data.token_scores || []);
+  } catch (err) {
+    console.error("RyView API error:", err);
+    showError(rect, err);
+  }
+}
+
 document.addEventListener("mouseup", () => {
-  setTimeout(async () => {
-    const now = Date.now();
-    if (now - lastCall < 2000) return;
-
-    const text = window.getSelection().toString().trim();
-    if (!text || text.length < 20) return;
-
-    lastCall = now;
-
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return;
-
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
-    showLoading(rect);
-
-    try {
-      const data = await predictReview(text);
-      showPopup(data.label, data.confidence, text, data.token_scores || []);
-    } catch (err) {
-      console.error("RyView API error:", err);
-      showError(rect, err);
-    }
+  setTimeout(() => {
+    processSelection();
   }, 300);
+});
+
+document.addEventListener("selectionchange", () => {
+  setTimeout(() => {
+    processSelection();
+  }, 150);
 });
 
 
