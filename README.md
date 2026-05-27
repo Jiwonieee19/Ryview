@@ -28,7 +28,7 @@ STEP 6:
 
 STEP 7:
 - CLICK "VIEW FULL EXPLANATION" TO OPEN A NEW TAB WITH DETAILED EXPLANATION AND ANALYSIS ON WHY IT FLAGGED THE REVIEW AS A GENUINE/DECEPTIVE
-![explanation/analysis tab](analysistab1.png)
-![explanation/analysis tab](analysistab2.png)
+![explanation/analysis tab](zxc_analysistab1.png)
+![explanation/analysis tab](zxc_analysistab2.png)
 
 NOW, ENJOY THE RYVIEW EXTENSION!!!
